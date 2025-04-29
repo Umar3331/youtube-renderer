@@ -1,0 +1,118 @@
+name: Import & Apply Terraform
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    env:
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION:         ${{ secrets.AWS_REGION }}
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: latest
+
+      - name: Terraform Init
+        run: terraform init
+
+      # ────────────────────────────
+      # IMPORT EXISTING RESOURCES
+      # ────────────────────────────
+
+      - name: Import S3 bucket
+        run: terraform import \
+              -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+              -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+              -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+              -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+              -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+              aws_s3_bucket.videos my-daily-videos-bucket-2025-umar
+
+      - name: Import ECR repository
+        run: terraform import \
+              aws_ecr_repository.renderer \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/daily-video-renderer
+
+      - name: Import OpenAI Secret
+        run: terraform import \
+              aws_secretsmanager_secret.openai \
+              arn:aws:secretsmanager:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:openai/daily-video-renderer
+
+      - name: Import YouTube Secret
+        run: terraform import \
+              aws_secretsmanager_secret.youtube \
+              arn:aws:secretsmanager:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:prod/YouTubeUploader/credentials
+
+      - name: Import ECS Task Role
+        run: terraform import \
+              aws_iam_role.ecs_task \
+              arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecs-render-task-role
+
+      - name: Import ECS Execution Role
+        run: terraform import \
+              aws_iam_role.ecs_exec \
+              arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole
+
+      - name: Import Lambda Role
+        run: terraform import \
+              aws_iam_role.lambda \
+              arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/youtube-uploader-lambda-role
+
+      - name: Import CloudWatch Log Group
+        run: terraform import \
+              aws_cloudwatch_log_group.ecs \
+              /ecs/daily-video-renderer
+
+      - name: Import ECS Cluster
+        run: terraform import \
+              aws_ecs_cluster.cluster \
+              arn:aws:ecs:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:cluster/daily-renderer-cluster
+
+      - name: Import ECS Task Definition
+        run: terraform import \
+              aws_ecs_task_definition.renderer \
+              youtube:latest
+
+      - name: Import EventBridge Render Rule
+        run: terraform import \
+              aws_cloudwatch_event_rule.render \
+              daily-video-render
+
+      - name: Import EventBridge Upload Rule
+        run: terraform import \
+              aws_cloudwatch_event_rule.upload \
+              daily-video-upload
+
+      - name: Import Lambda Function
+        run: terraform import \
+              aws_lambda_function.uploader \
+              arn:aws:lambda:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:function:youtube-uploader
+
+      # ────────────────────────────
+      # FINAL APPLY
+      # ────────────────────────────
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve \
+              -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+              -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+              -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+              -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+              -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+              -var="lambda_zip_path=youtube-uploader-deployment.zip"
