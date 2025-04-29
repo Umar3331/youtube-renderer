@@ -29,7 +29,7 @@ jobs:
         run: terraform init
 
       #####################################################################
-      # IMPORT EXISTING RESOURCES (pass every required var)              ###
+      # IMPORT EXISTING RESOURCES                                         #
       #####################################################################
 
       - name: Import S3 bucket
@@ -40,8 +40,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_s3_bucket.videos \
             my-daily-videos-bucket-2025-umar
 
@@ -53,8 +51,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_ecr_repository.renderer \
             daily-video-renderer
 
@@ -66,8 +62,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_secretsmanager_secret.openai \
             openai/daily-video-renderer
 
@@ -79,8 +73,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_secretsmanager_secret.youtube \
             prod/YouTubeUploader/credentials
 
@@ -92,8 +84,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_iam_role.ecs_task \
             ecs-render-task-role
 
@@ -105,8 +95,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_iam_role.ecs_exec \
             ecsTaskExecutionRole
 
@@ -118,8 +106,6 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_iam_role.lambda \
             youtube-uploader-lambda-role
 
@@ -131,13 +117,11 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            -var="youtube_creds_file=ignore-me" \
-            -var="lambda_zip_path=ignore-me" \
             aws_cloudwatch_log_group.ecs \
             /ecs/daily-video-renderer
 
       #####################################################################
-      # PACKAGE & APPLY                                                   ###
+      # PACKAGE & APPLY                                                   #
       #####################################################################
 
       - name: Package Lambda
