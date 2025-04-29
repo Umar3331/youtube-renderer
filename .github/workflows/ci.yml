@@ -15,102 +15,133 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ secrets.AWS_REGION }}
 
-      - name: Setup Terraform CLI
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
       - name: Terraform Init
         run: terraform init
 
       #####################################################################
-      # IMPORT EXISTING RESOURCES (with same -var flags as apply)       ###
+      # IMPORT EXISTING RESOURCES (pass every required var)              ###
       #####################################################################
 
-      - name: Import existing S3 bucket
+      - name: Import S3 bucket
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_s3_bucket.videos \
             my-daily-videos-bucket-2025-umar
 
-      - name: Import existing ECR repository
+      - name: Import ECR repository
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_ecr_repository.renderer \
             daily-video-renderer
 
-      - name: Import existing OpenAI secret
+      - name: Import OpenAI Secret
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_secretsmanager_secret.openai \
             openai/daily-video-renderer
 
-      - name: Import existing YouTube secret
+      - name: Import YouTube Secret
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_secretsmanager_secret.youtube \
             prod/YouTubeUploader/credentials
 
-      - name: Import existing ECS task IAM role
+      - name: Import ECS Task Role
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_iam_role.ecs_task \
             ecs-render-task-role
 
-      - name: Import existing ECS execution IAM role
+      - name: Import ECS Exec Role
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_iam_role.ecs_exec \
             ecsTaskExecutionRole
 
-      - name: Import existing Lambda IAM role
+      - name: Import Lambda Role
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_iam_role.lambda \
             youtube-uploader-lambda-role
 
-      - name: Import existing CloudWatch log group
+      - name: Import CloudWatch Log Group
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="youtube_creds_file=ignore-me" \
             -var="lambda_zip_path=ignore-me" \
             aws_cloudwatch_log_group.ecs \
             /ecs/daily-video-renderer
 
       #####################################################################
-      # PACKAGE & APPLY                                               ###
+      # PACKAGE & APPLY                                                   ###
       #####################################################################
 
       - name: Package Lambda
-        run: |
-          zip youtube-uploader-deployment.zip lambda_function.py
+        run: zip youtube-uploader-deployment.zip lambda_function.py
 
       - name: Terraform Apply
         id: tf_apply
@@ -124,7 +155,7 @@ jobs:
             -var="youtube_creds_file=youtube-creds.json" \
             -var="lambda_zip_path=youtube-uploader-deployment.zip"
 
-      - name: Get ECR repository URI
+      - name: Get ECR URI
         id: get_ecr
         run: |
           echo "registry=$(aws ecr describe-repositories \
@@ -141,7 +172,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -154,9 +185,7 @@ jobs:
             | docker login --username AWS --password-stdin ${{ needs.terraform_apply.outputs.ecr_uri }}
 
       - name: Build Docker image
-        run: |
-          docker build -t ${{ needs.terraform_apply.outputs.ecr_uri }}:latest .
+        run: docker build -t ${{ needs.terraform_apply.outputs.ecr_uri }}:latest .
 
       - name: Push to ECR
-        run: |
-          docker push ${{ needs.terraform_apply.outputs.ecr_uri }}:latest
+        run: docker push ${{ needs.terraform_apply.outputs.ecr_uri }}:latest
