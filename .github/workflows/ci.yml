@@ -1,0 +1,77 @@
+name: Infra & CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  terraform_apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    outputs:
+      ecr_uri: ${{ steps.get_ecr.outputs.registry }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Package Lambda
+        run: |
+          zip youtube-uploader-deployment.zip lambda_function.py
+
+      - name: Terraform Init & Apply
+        id: tf
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+            -var="lambda_zip_path=youtube-uploader-deployment.zip"
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Get ECR URI
+        id: get_ecr
+        run: |
+          echo "registry=$(aws ecr describe-repositories \
+            --repository-names daily-video-renderer \
+            --query 'repositories[0].repositoryUri' \
+            --output text)" >> $GITHUB_OUTPUT
+
+  build_and_push:
+    name: Build & Push Docker Image
+    needs: terraform_apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} |
+            docker login --username AWS --password-stdin ${{ needs.terraform_apply.outputs.ecr_uri }}
+
+      - name: Build & Tag Image
+        run: |
+          docker build -t ${{ needs.terraform_apply.outputs.ecr_uri }}:latest .
+      
+      - name: Push to ECR
+        run: |
+          docker push ${{ needs.terraform_apply.outputs.ecr_uri }}:latest
