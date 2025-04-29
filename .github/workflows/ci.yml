@@ -5,8 +5,8 @@ on:
     branches: [ main ]
 
 jobs:
-  terraform_apply:
-    name: Terraform Apply
+  terraform:
+    name: Terraform
     runs-on: ubuntu-latest
     outputs:
       ecr_uri: ${{ steps.get_ecr.outputs.registry }}
@@ -23,14 +23,33 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
+      # ── NEW: Initialize Terraform ──────────────────────────────────────
+      - name: Terraform Init
+        run: terraform init
+
+      # ── NEW: Import pending-deletion secrets into state ───────────────
+      - name: Import existing secrets into state
+        run: |
+          terraform import aws_secretsmanager_secret.openai  arn:aws:secretsmanager:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:openai/daily-video-renderer
+          terraform import aws_secretsmanager_secret.youtube arn:aws:secretsmanager:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:prod/YouTubeUploader/credentials
+
+      # ── NEW: Destroy just those two secrets ────────────────────────────
+      - name: Destroy old secrets
+        run: |
+          terraform destroy \
+            -target=aws_secretsmanager_secret.openai \
+            -target=aws_secretsmanager_secret.youtube \
+            -auto-approve
+
+      # ── Package Lambda ZIP ────────────────────────────────────────────
       - name: Package Lambda
         run: |
           zip youtube-uploader-deployment.zip lambda_function.py
 
-      - name: Terraform Init & Apply
-        id: tf
+      # ── Full apply to recreate secrets + all infra ────────────────────
+      - name: Terraform Apply
+        id: tf_apply
         run: |
-          terraform init
           terraform apply -auto-approve \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
             -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
@@ -38,8 +57,6 @@ jobs:
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="lambda_zip_path=youtube-uploader-deployment.zip"
-        env:
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
       - name: Get ECR URI
         id: get_ecr
@@ -50,8 +67,8 @@ jobs:
             --output text)" >> $GITHUB_OUTPUT
 
   build_and_push:
-    name: Build & Push Docker Image
-    needs: terraform_apply
+    name: Build & Push Docker
+    needs: terraform
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,12 +83,13 @@ jobs:
       - name: Login to ECR
         run: |
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} |
-            docker login --username AWS --password-stdin ${{ needs.terraform_apply.outputs.ecr_uri }}
+            docker login --username AWS --password-stdin ${{ needs.terraform.outputs.ecr_uri }}
 
       - name: Build & Tag Image
         run: |
-          docker build -t ${{ needs.terraform_apply.outputs.ecr_uri }}:latest .
-      
+          docker build -t ${{ needs.terraform.outputs.ecr_uri }}:latest .
+          docker tag ${{ needs.terraform.outputs.ecr_uri }}:latest ${{ needs.terraform.outputs.ecr_uri }}:latest
+
       - name: Push to ECR
         run: |
-          docker push ${{ needs.terraform_apply.outputs.ecr_uri }}:latest
+          docker push ${{ needs.terraform.outputs.ecr_uri }}:latest
