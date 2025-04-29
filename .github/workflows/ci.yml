@@ -6,10 +6,11 @@ on:
 
 jobs:
   terraform_apply:
-    name: Terraform & Secrets
+    name: Import & Terraform
     runs-on: ubuntu-latest
     outputs:
       ecr_uri: ${{ steps.get_ecr.outputs.registry }}
+
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -21,26 +22,51 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ secrets.AWS_REGION }}
 
-      - name: Restore Secrets (if pending deletion)
-        run: |
-          aws secretsmanager restore-secret \
-            --secret-id openai/daily-video-renderer \
-            --region ${{ secrets.AWS_REGION }} || echo "openai secret not pending"
-          aws secretsmanager restore-secret \
-            --secret-id prod/YouTubeUploader/credentials \
-            --region ${{ secrets.AWS_REGION }} || echo "youtube secret not pending"
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Import existing S3 bucket
+        run: |
+          terraform import aws_s3_bucket.videos my-daily-videos-bucket-2025-umar
+
+      - name: Import existing ECR repository
+        run: |
+          terraform import aws_ecr_repository.renderer daily-video-renderer
+
+      - name: Import existing OpenAI secret
+        run: |
+          terraform import aws_secretsmanager_secret.openai openai/daily-video-renderer
+
+      - name: Import existing YouTube secret
+        run: |
+          terraform import aws_secretsmanager_secret.youtube prod/YouTubeUploader/credentials
+
+      - name: Import existing ECS task IAM role
+        run: |
+          terraform import aws_iam_role.ecs_task ecs-render-task-role
+
+      - name: Import existing ECS execution IAM role
+        run: |
+          terraform import aws_iam_role.ecs_exec ecsTaskExecutionRole
+
+      - name: Import existing Lambda IAM role
+        run: |
+          terraform import aws_iam_role.lambda youtube-uploader-lambda-role
+
+      - name: Import existing CloudWatch log group
+        run: |
+          terraform import aws_cloudwatch_log_group.ecs /ecs/daily-video-renderer
 
       - name: Package Lambda
         run: |
           zip youtube-uploader-deployment.zip lambda_function.py
 
-      - name: Terraform Init & Apply
+      - name: Terraform Apply
         id: tf_apply
         run: |
-          terraform init
           terraform apply -auto-approve \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
             -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
@@ -48,12 +74,6 @@ jobs:
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
             -var="lambda_zip_path=youtube-uploader-deployment.zip"
-        env:
-          AWS_ACCOUNT_ID:    ${{ secrets.AWS_ACCOUNT_ID }}
-          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
 
       - name: Get ECR repository URI
         id: get_ecr
@@ -67,6 +87,7 @@ jobs:
     name: Build & Push Docker Image
     needs: terraform_apply
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -81,7 +102,7 @@ jobs:
       - name: Login to ECR
         run: |
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
-          | docker login --username AWS --password-stdin ${{ needs.terraform_apply.outputs.ecr_uri }}
+            | docker login --username AWS --password-stdin ${{ needs.terraform_apply.outputs.ecr_uri }}
 
       - name: Build Docker image
         run: |
