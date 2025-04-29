@@ -76,41 +76,18 @@ jobs:
             aws_secretsmanager_secret.youtube \
             prod/YouTubeUploader/credentials
 
-      - name: Import ECS Task Role
+      - name: Import IAM roles & log group
         run: |
-          terraform import \
-            -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
-            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
-            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
-            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
-            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            aws_iam_role.ecs_task \
-            ecs-render-task-role
+          for r in ecs_task ecs_exec lambda; do
+            terraform import \
+              -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+              -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+              -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
+              -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+              -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+              aws_iam_role.$r $(terraform state show aws_iam_role.$r | grep arn | awk '{print $3}')
+          done
 
-      - name: Import ECS Exec Role
-        run: |
-          terraform import \
-            -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
-            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
-            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
-            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
-            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            aws_iam_role.ecs_exec \
-            ecsTaskExecutionRole
-
-      - name: Import Lambda Role
-        run: |
-          terraform import \
-            -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
-            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
-            -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
-            -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
-            -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            aws_iam_role.lambda \
-            youtube-uploader-lambda-role
-
-      - name: Import CloudWatch Log Group
-        run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
             -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
