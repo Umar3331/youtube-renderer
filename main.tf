@@ -39,21 +39,21 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
-variable "youtube_client_id" {
-  description = "YouTube OAuth client_id"
-  type        = string
-  sensitive   = true
-}
-variable "youtube_client_secret" {
-  description = "YouTube OAuth client_secret"
-  type        = string
-  sensitive   = true
-}
-variable "youtube_refresh_token" {
-  description = "YouTube OAuth refresh_token"
-  type        = string
-  sensitive   = true
-}
+# variable "youtube_client_id" {
+#   description = "YouTube OAuth client_id"
+#   type        = string
+#   sensitive   = true
+# }
+# variable "youtube_client_secret" {
+#   description = "YouTube OAuth client_secret"
+#   type        = string
+#   sensitive   = true
+# }
+# variable "youtube_refresh_token" {
+#   description = "YouTube OAuth refresh_token"
+#   type        = string
+#   sensitive   = true
+# }
 
 variable "lambda_zip_path" {
   description = "Path to the CI-generated youtube-uploader ZIP"
