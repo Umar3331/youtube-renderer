@@ -1,21 +1,20 @@
-name: Infra & CD
+name: Import & Deploy
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  terraform_apply:
-    name: Import & Terraform
+  terraform:
     runs-on: ubuntu-latest
     outputs:
       ecr_uri: ${{ steps.get_ecr.outputs.registry }}
 
     steps:
-      - name: Check out code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -28,9 +27,9 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      #####################################################################
-      # IMPORT EXISTING RESOURCES                                         #
-      #####################################################################
+      #───────────────────────────────────────────────────────────────────#
+      # IMPORT EXISTING RESOURCES (pass dummy for the two file vars)    #
+      #───────────────────────────────────────────────────────────────────#
 
       - name: Import S3 bucket
         run: |
@@ -40,6 +39,8 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+            -var="youtube_creds_file=IGNORE" \
+            -var="lambda_zip_path=IGNORE" \
             aws_s3_bucket.videos \
             my-daily-videos-bucket-2025-umar
 
@@ -51,10 +52,12 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+            -var="youtube_creds_file=IGNORE" \
+            -var="lambda_zip_path=IGNORE" \
             aws_ecr_repository.renderer \
             daily-video-renderer
 
-      - name: Import OpenAI Secret
+      - name: Import OpenAI secret
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
@@ -62,10 +65,12 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+            -var="youtube_creds_file=IGNORE" \
+            -var="lambda_zip_path=IGNORE" \
             aws_secretsmanager_secret.openai \
             openai/daily-video-renderer
 
-      - name: Import YouTube Secret
+      - name: Import YouTube secret
         run: |
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
@@ -73,33 +78,42 @@ jobs:
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+            -var="youtube_creds_file=IGNORE" \
+            -var="lambda_zip_path=IGNORE" \
             aws_secretsmanager_secret.youtube \
             prod/YouTubeUploader/credentials
 
       - name: Import IAM roles & log group
         run: |
+          # ecs_task, ecs_exec, lambda roles
           for r in ecs_task ecs_exec lambda; do
+            arn=$(aws iam get-role --role-name ${r == "lambda" ? "youtube-uploader-lambda-role" : (r == "ecs_exec" ? "ecsTaskExecutionRole" : "ecs-render-task-role")} \
+                 --query "Role.Arn" --output text)
             terraform import \
               -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
               -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
               -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
               -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
               -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-              aws_iam_role.$r $(terraform state show aws_iam_role.$r | grep arn | awk '{print $3}')
+              -var="youtube_creds_file=IGNORE" \
+              -var="lambda_zip_path=IGNORE" \
+              aws_iam_role.${r} $arn
           done
 
+          # CloudWatch log group
           terraform import \
             -var="account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
             -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
             -var="youtube_client_id=${{ secrets.YOUTUBE_CLIENT_ID }}" \
             -var="youtube_client_secret=${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
             -var="youtube_refresh_token=${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
-            aws_cloudwatch_log_group.ecs \
-            /ecs/daily-video-renderer
+            -var="youtube_creds_file=IGNORE" \
+            -var="lambda_zip_path=IGNORE" \
+            aws_cloudwatch_log_group.ecs /ecs/daily-video-renderer
 
-      #####################################################################
-      # PACKAGE & APPLY                                                   #
-      #####################################################################
+      #───────────────────────────────────────────────────────────────────#
+      # PACKAGE & APPLY                                                 #
+      #───────────────────────────────────────────────────────────────────#
 
       - name: Package Lambda
         run: zip youtube-uploader-deployment.zip lambda_function.py
@@ -124,16 +138,15 @@ jobs:
             --query 'repositories[0].repositoryUri' \
             --output text)" >> $GITHUB_OUTPUT
 
-  build_and_push:
-    name: Build & Push Docker Image
-    needs: terraform_apply
+  docker:
+    name: Build & Push Docker
+    needs: terraform
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -142,11 +155,12 @@ jobs:
 
       - name: Login to ECR
         run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
-            | docker login --username AWS --password-stdin ${{ needs.terraform_apply.outputs.ecr_uri }}
+          aws ecr get-login-password \
+            --region ${{ secrets.AWS_REGION }} \
+          | docker login --username AWS --password-stdin ${{ needs.terraform.outputs.ecr_uri }}
 
-      - name: Build Docker image
-        run: docker build -t ${{ needs.terraform_apply.outputs.ecr_uri }}:latest .
+      - name: Build Image
+        run: docker build -t ${{ needs.terraform.outputs.ecr_uri }}:latest .
 
-      - name: Push to ECR
-        run: docker push ${{ needs.terraform_apply.outputs.ecr_uri }}:latest
+      - name: Push Image
+        run: docker push ${{ needs.terraform.outputs.ecr_uri }}:latest
